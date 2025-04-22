@@ -1,8 +1,19 @@
-class BookFetcher:
-    def fetch_by_isbn(self, isbn):
-        # implementation code
-        pass
+---
+layout: post
+title: "{{ title }}"
+author: "{{ authors | join(', ') }}"
+cover_image: "{{ cover }}"
+---
 
-    def some_other_method(self):
-        book = self.fetch_by_isbn("1234567890")
-        # additional code
+{% if cover %}
+![Cover image]({{ cover }})
+{% endif %}
+
+{% if first_sentence %}
+
+"{{ first_sentence }}"
+
+{% endif %}
+
+
+{{ description }}

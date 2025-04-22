@@ -1,5 +1,5 @@
 import requests
-import re
+import urllib.parse
 
 class BookFetcher:
     BASE_URL = "https://openlibrary.org/api/books"
@@ -13,44 +13,101 @@ class BookFetcher:
         resp = requests.get(self.BASE_URL, params=params)
         resp.raise_for_status()
         data = resp.json().get(f"ISBN:{isbn}", {})
+        #print(data)
         # Extract and deduplicate author names
         names = [a["name"] for a in data.get("authors", [])]
         unique = list(dict.fromkeys(names))
 
-        # Attempt to get original publication date from Open Library work data
-        orig_pub = ""
-        works = data.get("works", [])
-        if works and isinstance(works, list):
-            work_key = works[0].get("key")
-            if work_key:
-                work_resp = requests.get(f"https://openlibrary.org{work_key}.json")
-                if work_resp.status_code == 200:
-                    work_data = work_resp.json()
-                    orig_pub = work_data.get("first_publish_date", "") or ""
+        # Extract the novel’s first sentence, preferring Open Library excerpts
+        first_sentence = ""
+        excerpts = data.get("excerpts", [])
+        if isinstance(excerpts, list):
+            for excerpt in excerpts:
+                if excerpt.get("first_sentence") and "text" in excerpt:
+                    first_sentence = excerpt["text"]
+                    break
+        # Fallback to the legacy Raw first_sentence fields if no excerpt found
+        if not first_sentence:
+            raw_fs = data.get("first_sentence") or data.get("first_sentences", "")
+            if isinstance(raw_fs, dict):
+                first_sentence = raw_fs.get("value", "") or ""
+            elif isinstance(raw_fs, list):
+                first_sentence = raw_fs[0] if raw_fs else ""
+            else:
+                first_sentence = raw_fs or ""
 
-        # Fallback to edition-level publish_date if still missing
-        if not orig_pub:
-            orig_pub = data.get("publish_date", "") or ""
+        # Fetch the book description from Wikipedia first paragraph
+        description = ""
+        wiki_api = "https://en.wikipedia.org/w/api.php"
+        # Search for the book title
+        search_params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": data.get("title", ""),
+            "format": "json"
+        }
+        search_resp = requests.get(wiki_api, params=search_params)
+        if search_resp.status_code == 200:
+            results = search_resp.json().get("query", {}).get("search", [])
+            if results:
+                page_title = results[0]["title"]
+                # Get the extract (intro) for the found page
+                extract_params = {
+                    "action": "query",
+                    "prop": "extracts",
+                    "exintro": True,
+                    "explaintext": True,
+                    "titles": page_title,
+                    "format": "json"
+                }
+                extract_resp = requests.get(wiki_api, params=extract_params)
+                if extract_resp.status_code == 200:
+                    pages = extract_resp.json().get("query", {}).get("pages", {})
+                    for page in pages.values():
+                        extract = page.get("extract", "")
+                        if extract:
+                            description = extract.split("\n")[0]
+                            break
 
-        # Fallback to Google Books as last resort
-        if not orig_pub:
-            gb_params = {"q": f"isbn:{isbn}"}
-            gb_resp = requests.get("https://www.googleapis.com/books/v1/volumes", params=gb_params)
-            if gb_resp.status_code == 200:
-                items = gb_resp.json().get("items", [])
-                years = []
-                for item in items:
-                    pd = item.get("volumeInfo", {}).get("publishedDate", "")
-                    match = re.match(r"(\d{4})", pd)
-                    if match:
-                        years.append(int(match.group(1)))
-                if years:
-                    orig_pub = str(min(years))
-        
+        # Attempt to get cover image from Wikipedia page
+        cover = ""
+        wiki_api = "https://en.wikipedia.org/w/api.php"
+        # Search Wikipedia for the book title
+        search_params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": data.get("title", ""),
+            "format": "json"
+        }
+        search_resp = requests.get(wiki_api, params=search_params)
+        if search_resp.status_code == 200:
+            results = search_resp.json().get("query", {}).get("search", [])
+            if results:
+                page_title = results[0]["title"]
+                # Fetch the lead image thumbnail
+                img_params = {
+                    "action": "query",
+                    "titles": page_title,
+                    "prop": "pageimages",
+                    "pithumbsize": 500,
+                    "format": "json"
+                }
+                img_resp = requests.get(wiki_api, params=img_params)
+                if img_resp.status_code == 200:
+                    pages = img_resp.json().get("query", {}).get("pages", {})
+                    for p in pages.values():
+                        thumb = p.get("thumbnail", {})
+                        if thumb.get("source"):
+                            cover = thumb["source"]
+                            break
+        # Fallback to Open Library generic cover if Wikipedia has none
+        if not cover:
+            cover = data.get("cover", {}).get("large") or data.get("cover", {}).get("medium") or ""
+
         return {
-            "title": data.get("title"),
+            "title": data.get("title", "").title(),
             "authors": unique,
-            "original_publication_date": orig_pub,
-            "cover": data.get("cover", {}).get("large"),
-            "description": data.get("subtitle") or data.get("notes", "")
+            "first_sentence": first_sentence,
+            "cover": cover,
+            "description": description
         }
