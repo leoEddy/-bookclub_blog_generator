@@ -21,6 +21,7 @@ class BookFetcher:
         # Extract the novel’s first sentence, preferring Open Library excerpts
         first_sentence = ""
         excerpts = data.get("excerpts", [])
+        print(excerpts)
         if isinstance(excerpts, list):
             for excerpt in excerpts:
                 if excerpt.get("first_sentence") and "text" in excerpt:
