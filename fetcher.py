@@ -24,7 +24,7 @@ class BookFetcher:
         print(excerpts)
         if isinstance(excerpts, list):
             for excerpt in excerpts:
-                if excerpt.get("first_sentence") and "text" in excerpt:
+                if "text" in excerpt and excerpt["text"]:
                     first_sentence = excerpt["text"]
                     break
         # Fallback to the legacy Raw first_sentence fields if no excerpt found
