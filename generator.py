@@ -14,9 +14,9 @@ tmpl = env.get_template('template.md.j2')
 def generate(isbn_list):
     # If no ISBNs were passed as arguments, prompt interactively
     if not isbn_list:
-        #isbn_input = click.prompt("Enter ISBN(s), separated by spaces")
-        isbn_input = '0679728899'
-        isbn_list = isbn_input.split()
+        isbn_input = click.prompt("Enter ISBN(s), separated by spaces")
+        #isbn_input = '0679728899'
+        #isbn_list = isbn_input.split()
 
     # Initialize fetcher and ensure working directory
     fetcher = BookFetcher()
